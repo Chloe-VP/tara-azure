@@ -1,0 +1,43 @@
+# Example terraform.tfvars file
+# Copy this to terraform.tfvars and customize for your deployment
+#
+# cp terraform.tfvars.example terraform.tfvars
+# nano terraform.tfvars
+
+# Azure Configuration
+resource_group_name = "chloe-recovery-rg"
+location           = "westus2"  # or "eastus", "centralus", etc.
+
+# VM Configuration
+vm_name        = "chloe-dr-vm"
+vm_size        = "Standard_D4s_v3"  # 4 vCPU, 16GB RAM (matches Mac mini)
+admin_username = "chloe"
+
+# Security
+# IMPORTANT: Restrict SSH access to your IP for production!
+# allowed_ssh_sources = ["YOUR.IP.ADDRESS/32"]
+allowed_ssh_sources = ["0.0.0.0/0"]  # Allow from anywhere (NOT RECOMMENDED FOR PROD)
+
+# SSH Key
+# Leave empty to use ~/.ssh/id_rsa.pub
+# Or provide specific key:
+# ssh_public_key = "ssh-rsa AAAAB3NzaC1yc2E... your-email@example.com"
+ssh_public_key = ""
+
+# Storage
+data_disk_size_gb      = 256  # Additional storage for backups/data
+create_backup_storage  = true  # Create Azure Storage for backups
+
+# Ollama Models
+ollama_models = [
+  "llama3.1:8b",       # Main model (smaller for VM)
+  "nomic-embed-text"   # Embeddings
+]
+
+# Tags
+tags = {
+  Owner       = "Dave"
+  Project     = "OpenClaw"
+  Environment = "DisasterRecovery"
+  CostCenter  = "Infrastructure"
+}

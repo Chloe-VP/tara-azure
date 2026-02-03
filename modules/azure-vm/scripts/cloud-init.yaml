@@ -1,0 +1,110 @@
+#cloud-config
+# OpenClaw VM Provisioning via Cloud-Init
+# This script runs on first boot to set up the environment
+#
+# Variables injected by Terraform:
+#   - admin_username
+#   - install_ollama
+#   - ollama_models
+#   - enable_systemd
+
+package_update: true
+package_upgrade: true
+
+packages:
+  - curl
+  - git
+  - jq
+  - build-essential
+  - ca-certificates
+  - gnupg
+  - lsb-release
+  - python3-pip
+  - unzip
+  - tmux
+  - htop
+
+# Create directories
+runcmd:
+  # Install Node.js (LTS)
+  - curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+  - apt-get install -y nodejs
+  
+  # Install Ollama if requested
+%{ if install_ollama ~}
+  - curl -fsSL https://ollama.com/install.sh | sh
+  - systemctl enable ollama
+  - systemctl start ollama
+  
+  # Pull models in background
+%{ for model in jsondecode(ollama_models) ~}
+  - sudo -u ${admin_username} ollama pull ${model} || true
+%{ endfor ~}
+%{ endif ~}
+  
+  # Install OpenClaw
+  - npm install -g @anthropics/openclaw 2>/dev/null || curl -fsSL https://openclaw.dev/install.sh | sh
+  
+  # Create OpenClaw directories
+  - sudo -u ${admin_username} mkdir -p /home/${admin_username}/.openclaw
+  - sudo -u ${admin_username} mkdir -p /home/${admin_username}/.clawdbot/credentials
+  - sudo -u ${admin_username} mkdir -p /home/${admin_username}/clawd
+  - sudo -u ${admin_username} mkdir -p /home/${admin_username}/backup
+  
+  # Set permissions
+  - chown -R ${admin_username}:${admin_username} /home/${admin_username}/.openclaw
+  - chown -R ${admin_username}:${admin_username} /home/${admin_username}/.clawdbot
+  - chmod 700 /home/${admin_username}/.clawdbot/credentials
+
+%{ if enable_systemd ~}
+# Create systemd service for OpenClaw
+write_files:
+  - path: /etc/systemd/system/openclaw.service
+    permissions: '0644'
+    content: |
+      [Unit]
+      Description=OpenClaw Gateway
+      After=network.target
+%{ if install_ollama ~}
+      After=ollama.service
+%{ endif ~}
+      
+      [Service]
+      Type=simple
+      User=${admin_username}
+      Environment=HOME=/home/${admin_username}
+      ExecStart=/usr/local/bin/openclaw gateway start --foreground
+      Restart=always
+      RestartSec=10
+      StandardOutput=journal
+      StandardError=journal
+      
+      [Install]
+      WantedBy=multi-user.target
+
+runcmd:
+  - systemctl daemon-reload
+  - systemctl enable openclaw
+  # Don't start yet - wait for config restoration
+%{ endif ~}
+
+# Final setup message
+final_message: |
+  OpenClaw VM provisioning complete!
+  
+  VM Details:
+    - User: ${admin_username}
+    - OpenClaw: Installed
+%{ if install_ollama ~}
+    - Ollama: Running
+    - Models: ${ollama_models}
+%{ endif ~}
+  
+  Next Steps:
+    1. Restore OpenClaw config to ~/.openclaw/
+    2. Configure API keys in ~/.openclaw/openclaw.json
+    3. Start service: sudo systemctl start openclaw
+    4. Check status: openclaw gateway status
+    5. View logs: sudo journalctl -u openclaw -f
+  
+  System ready for configuration!
